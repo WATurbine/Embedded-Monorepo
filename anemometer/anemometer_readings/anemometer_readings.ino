@@ -2,7 +2,7 @@
 const float anemometer_min_volts = 0.4;
 const float anemometer_max_volts = 2.0;
 const float min_wind_speed = 0.0;
-const float max_wind_speed = 32.4;
+const float max_wind_speed = 50;
 
 // ADC input pin
 const int adcPin = A0; //use A0 or whatever analog pin you are using
@@ -24,7 +24,7 @@ void loop() {
   Serial.print(wind_speed);
   Serial.println(" m/s");
 
-  delay(1000);
+  delay(50);
 }
 
 // Custom map function for floats

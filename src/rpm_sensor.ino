@@ -14,6 +14,32 @@ void setup() {
 }
 
 void loop() {
+  RPMcalculator();
+}
+
+void PulseDetected() {
+  unsigned long CurrentTime = micros();
+  bool sensorState = digitalRead(SensorPin);
+
+  // Debounce: ignore pulses faster than 1ms apart
+  if (CurrentTime - LastPulseTime < 1000) return;
+
+  if (sensorState == HIGH && readyForNextPulse) {
+    // Object just arrived
+    objectPresent = true; // Mark that object is detected
+    readyForNextPulse = false; // Prevent duplicate detection
+    LastPulseTime = CurrentTime;  // Save pulse timestamp
+    newValidPulse = true;
+  }
+
+  if (sensorState == LOW && objectPresent) {
+    // Object has left, ready for next pass
+    objectPresent = false; // Object is no longer detected
+    readyForNextPulse = true; // Ready to detect the next incoming pulse
+  }
+}
+
+void RPMcalculator() {
   unsigned long currentTime = micros();
 
   // Timeout: reset RPM if no object has passed in the last 5 seconds
@@ -37,26 +63,4 @@ void loop() {
   Serial.print("RPM: ");
   Serial.println(RPM);
   delay(1000);  // Display update every second
-}
-
-void PulseDetected() {
-  unsigned long CurrentTime = micros();
-  bool sensorState = digitalRead(SensorPin);
-
-  // Debounce: ignore pulses faster than 1ms apart
-  if (CurrentTime - LastPulseTime < 1000) return;
-
-  if (sensorState == HIGH && readyForNextPulse) {
-    // Object just arrived
-    objectPresent = true; // Mark that object is detected
-    readyForNextPulse = false; // Prevent duplicate detection
-    LastPulseTime = CurrentTime;  // Save pulse timestamp
-    newValidPulse = true;
-  }
-
-  if (sensorState == LOW && objectPresent) {
-    // Object has left, ready for next pass
-    objectPresent = false; // Object is no longer detected
-    readyForNextPulse = true; // Ready to detect the next incoming pulse
-  }
 }

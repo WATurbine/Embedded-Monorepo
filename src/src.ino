@@ -1,4 +1,10 @@
 #include <Stepper.h>
+#include <math.h>
+
+
+const float r = 0.05; // radius in meters, dont know this yet
+const float alpha = 0.12; // blade angle of attack in radians, 7 degrees not radians
+const float radPerStep = 1/200; 
 
 const int stepper1A = 9;
 const int stepper2A = 10;
@@ -49,8 +55,12 @@ void loop() {
   // beta = arctan(V_w/(omega*r)) - alpha
   // Get the desired angle
   // turn into number of steps
-  int desiredSteps = pitchMath(V_w,omega);
+  int desiredSteps = pitchMatch(V_w,omega);
   int amountToStep = desiredSteps - currentSteps;
+  MoveStepper(int amountToStep);
+  //currentSteps = desiredSteps
+  //tracking motor position ?
+  
   // compensate for intertia of blades
   // .step(1) or .step(-1) or dont
   // iterate desired steps/current
@@ -78,6 +88,28 @@ int* readThermistors(){
   41  Serial.print("C\	\	");
 }
 
+int pitchmatch(V_w, omega){
+  float beta = atan(V_w/(omega*r)) - alpha;
+  int desiredSteps = round(beta/radPerStep)
+  return desiredSteps;
+
+}
+
+void MoveStepper(int amountToStep){
+  if (amountToStep>0){
+    //forwards steps
+    for (int i = 0, i < amountToStep; i++){
+      stepForward(); // needs to be defined
+      //or i think steven said it was defined in a library
+    }
+  }
+  if (amountToStep < 0){
+    //back steps
+    for (int i = 0; i < abs(amountToStep; i++)){
+      stepBackward(); //same concept as stepforward
+    }
+  }
+}
 void emergencyHandler(){
   // pitch the blades out of the wind -> max in one of the directions
   // apply servo max

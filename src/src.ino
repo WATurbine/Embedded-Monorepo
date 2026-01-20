@@ -1,6 +1,8 @@
 #include <Stepper.h>
+#include <Servo.h>
 #include <math.h>
 
+const float clockPeriod = 500; // clock period in ms, used to make serial monitor more readable
 
 const float r = 0.05; // radius in meters, dont know this yet
 const float alpha = 0.12; // blade angle of attack in radians, 7 degrees not radians
@@ -15,108 +17,110 @@ const int motorControllerThermistor = A0;
 #define stepsPerRevolution 200
 Stepper myStepper(stepsPerRevolution, stepper1A, stepper2A, stepper3A, stepper4A);
 
-//These  values are in the datasheet
-#define RT0 10000   // Ω
-#define B 3977      //  K
-#define VCC 3.3    //Supply  voltage
-#define R 10000  //R=10KΩ
-float RT, VR, ln, TX,  T0, VRT;
+// Thermistor parameters
+const float R0 = 10000.0;      // resistance at 25°C
+const float T0 = 25.0 + 273.15; // nominal temperature in Kelvin
+const float BETA = 3375.0;     // beta coefficient
+const float Rref = 10000.0;    // series resistor value
+
+Servo myServo;
+
+struct ThermistorReadings {
+  float t1;
+  float t2;
+  float t3;
+};
+
+bool isLit = false;
 
 void setup() {
-  // set the speed at 60 rpm:
-  myStepper.setSpeed(60);
   // initialize the serial port:
   Serial.begin(9600);
-  Serial2.begin(9600);
+
+  myServo.attach(7);
+
+  // set the servo
+  pinMode(6, OUTPUT);
+  digitalWrite(6, HIGH);
 
   pinMode(ledPin, OUTPUT);
-
-  // TODO:: buy a relay/digital cmos for the solenoid
-  // drive logic high to the cmos/relay
-  // add an interrupt for this
-
-  // move the stepper to the limitswitch, reset step count 
-  unsigned int currentSteps = calibrateStepper();
 }
 
 void loop() {
   // poll all the sensors
-  int arrayTherm[5];
-  arrayTherm = readThermistors();
-
-  unsigned int V_w = analogRead(anemometerPin);
-  unsigned int omega = RPMcalculator();
-
-  // trigger an interrupt if any sensors give average bad data
-
-
-  // pitching blades -> TODO figure what radius to use
-
-  // beta = arctan(V_w/(omega*r)) - alpha
-  // Get the desired angle
-  // turn into number of steps
-  int desiredSteps = pitchMatch(V_w,omega);
-  int amountToStep = desiredSteps - currentSteps;
-  MoveStepper(int amountToStep);
-  //currentSteps = desiredSteps
-  //tracking motor position ?
-  
-  // compensate for intertia of blades
-  // .step(1) or .step(-1) or dont
-  // iterate desired steps/current
-
-  //applying brakes if necessary 
-  // make a function that corresponds to over-rpm
+  ThermistorReadings temps = readThermistors();
+  printTime(millis());
+  Serial.print(" - 1: ");
+  Serial.print(temps.t1);
+  Serial.print(", 2: ");
+  Serial.print(temps.t2);
+  Serial.print(", 3: ");
+  Serial.println(temps.t3);
 
 
-}
+  // set servo
+  if (Serial.available()) {
+    int percent = Serial.parseInt();   // read full incoming string
+    if (percent >= 0 && percent <= 100) {
+      int angle = map(percent, 0, 100, 0, 180);  // convert %
+      myServo.write(angle);
 
-int* readThermistors(){
-  VRT = analogRead(A0);              //Acquisition analog value of VRT
-  29  VRT  = (5.00 / 1023.00) * VRT;      //Conversion to voltage
-  30  VR = VCC - VRT;
-  31  RT = VRT / (VR / R);               //Resistance of RT
-  32
-  33  ln = log(RT / RT0);
-  34  TX = (1 / ((ln / B) + (1 / T0))); //Temperature from thermistor
-  35
-  36  TX =  TX - 273.15;                 //Conversion to Celsius
-  37
-  38  Serial.print("Temperature:");
-  39  Serial.print("\	");
-  40  Serial.print(TX);
-  41  Serial.print("C\	\	");
-}
-
-int pitchmatch(V_w, omega){
-  float beta = atan(V_w/(omega*r)) - alpha;
-  int desiredSteps = round(beta/radPerStep)
-  return desiredSteps;
-
-}
-
-void MoveStepper(int amountToStep){
-  if (amountToStep>0){
-    //forwards steps
-    for (int i = 0, i < amountToStep; i++){
-      stepForward(); // needs to be defined
-      //or i think steven said it was defined in a library
+      printTime(millis());
+      Serial.print(" - Percent: ");
+      Serial.print(percent);
+      Serial.print("  -> Angle: ");
+      Serial.println(angle);
+    } else {
+      Serial.println("Invalid. Enter 0–100.");
     }
   }
-  if (amountToStep < 0){
-    //back steps
-    for (int i = 0; i < abs(amountToStep; i++)){
-      stepBackward(); //same concept as stepforward
-    }
+
+  isLit = !isLit;
+  if (isLit){
+    digitalWrite(13, HIGH);
+  }else{
+    digitalWrite(13, LOW);
   }
-}
-void emergencyHandler(){
-  // pitch the blades out of the wind -> max in one of the directions
-  // apply servo max
-  // release solenoid
-
+  delay(clockPeriod);
 }
 
-void rpmHandler(){
+ThermistorReadings readThermistors(){  
+  ThermistorReadings r;
+  r.t1 = readThermistor(14);
+  r.t2 = readThermistor(15);
+  r.t3 = readThermistor(16);
+  return r;  // safe
+}
 
+void printTime(unsigned long ms){
+  unsigned long minutes = ms / 60000;
+  unsigned long seconds = (ms % 60000) / 1000;
+  unsigned long millisPart = ms % 1000;
+  // Print with zero-padding
+  Serial.print(minutes);
+  Serial.print(":");
+  if (seconds < 10) Serial.print("0");
+  Serial.print(seconds);
+  Serial.print(".");
+  if (millisPart < 100) Serial.print("0");
+  if (millisPart < 10)  Serial.print("0");
+  Serial.print(millisPart);
+}
+
+float readThermistor(int pinToRead){
+  int adc = analogRead(pinToRead);
+
+  float Vratio = adc / 1023.0;   // or 4095.0 for 12-bit ADC chips
+
+  // correct for your wiring
+  float Rtherm = Rref * (1.0 / Vratio - 1.0);
+  float steinhart;
+    steinhart = Rtherm / 10000;
+    steinhart = log(steinhart);
+    steinhart /= BETA;
+    steinhart += 1.0 / (25 + 273.15);
+    steinhart = 1.0 / steinhart;
+    steinhart -= 273.15;
+
+  return steinhart;
 }
